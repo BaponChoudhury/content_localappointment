@@ -95,7 +95,7 @@ def _assemble(clips, audio, srt, hook, output, work_dir, font_size=16, colour_he
 
     abs_srt = os.path.abspath(srt).replace("\\", "/").replace(":", "\\:")
     vf = (
-        f"subtitles='{abs_srt}':force_style='"
+        f"subtitles='{abs_srt}':original_size=1080x1920:force_style='"
         f"FontName=Arial,FontSize={font_size},Bold=1,"
         f"PrimaryColour={colour_hex},OutlineColour=&H00000000,"
         f"Outline=2,Alignment=2,MarginV={margin_v}',"
@@ -230,7 +230,7 @@ if submitted:
         output_path = os.path.join(work_dir, "final_video.mp4")
         font_size = {"Small": 9, "Medium": 11, "Large": 14}[caption_size]
         colour_hex = {"White": "&H00FFFFFF", "Yellow": "&H0000FFFF", "Cyan": "&H00FFFF00"}[caption_colour]
-        margin = {"Bottom": 80, "Middle": 500, "Top": 900}[caption_position]
+        margin = {"Bottom": 40, "Middle": 860, "Top": 1720}[caption_position]
         try:
             _assemble(clips, audio_path, srt_path, hook.strip(), output_path, work_dir,
                       font_size=font_size, colour_hex=colour_hex, margin_v=margin)
