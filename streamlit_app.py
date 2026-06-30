@@ -81,17 +81,28 @@ def _assemble(clips, audio, srt, hook, output, work_dir, font_size=16, colour_he
     trimmed = os.path.join(work_dir, "trimmed.mp4")
     _run(["ffmpeg", "-y", "-i", looped, "-t", str(duration), "-c", "copy", trimmed])
 
-    safe_hook = hook.replace("'", "'").replace(":", "\\:")
+    # Wrap hook text at ~30 chars per line to avoid flooding the screen
+    words = hook.split()
+    lines, line = [], []
+    for word in words:
+        line.append(word)
+        if len(" ".join(line)) > 30:
+            lines.append(" ".join(line[:-1]))
+            line = [word]
+    if line:
+        lines.append(" ".join(line))
+    wrapped_hook = "\n".join(lines).replace("'", "'").replace(":", "\\:")
+
     abs_srt = os.path.abspath(srt).replace("\\", "/").replace(":", "\\:")
     vf = (
         f"subtitles='{abs_srt}':force_style='"
         f"FontName=Arial,FontSize={font_size},Bold=1,"
         f"PrimaryColour={colour_hex},OutlineColour=&H00000000,"
         f"Outline=2,Alignment=2,MarginV={margin_v}',"
-        f"drawtext=text='{safe_hook}':"
-        "fontsize=44:fontcolor=white:"
-        "x=(w-text_w)/2:y=h/5:"
-        "box=1:boxcolor=black@0.6:boxborderw=12:"
+        f"drawtext=text='{wrapped_hook}':"
+        "fontsize=28:fontcolor=white:"
+        "x=(w-text_w)/2:y=h/6:"
+        "box=1:boxcolor=black@0.55:boxborderw=10:"
         "enable='between(t,0,2)'"
     )
 
@@ -100,8 +111,8 @@ def _assemble(clips, audio, srt, hook, output, work_dir, font_size=16, colour_he
         "-i", trimmed, "-i", audio,
         "-map", "0:v", "-map", "1:a",
         "-vf", vf,
-        "-c:v", "libx264", "-preset", "fast",
-        "-c:a", "aac", "-b:a", "192k",
+        "-c:v", "libx264", "-crf", "28", "-preset", "medium",
+        "-c:a", "aac", "-b:a", "128k",
         "-shortest", output,
     ])
 
@@ -183,11 +194,15 @@ if submitted:
     with tempfile.TemporaryDirectory() as work_dir:
         progress = st.progress(0, text="Starting...")
 
-        progress.progress(10, text="🎙️  Generating voiceover (British English)...")
+        progress.progress(10, text="🎙️  Generating voiceover (Neural British English)...")
         try:
-            from gtts import gTTS
+            import edge_tts
+            import asyncio
             audio_path = os.path.join(work_dir, "voice.mp3")
-            gTTS(text=script, lang="en", tld="co.uk").save(audio_path)
+            async def _speak():
+                communicate = edge_tts.Communicate(script, "en-GB-SoniaNeural")
+                await communicate.save(audio_path)
+            asyncio.run(_speak())
         except Exception as e:
             st.error(f"Voice generation failed: {e}")
             st.stop()
@@ -213,9 +228,9 @@ if submitted:
 
         progress.progress(70, text="🎞️  Assembling video (this takes ~1 min)...")
         output_path = os.path.join(work_dir, "final_video.mp4")
-        font_size = {"Small": 13, "Medium": 16, "Large": 22}[caption_size]
+        font_size = {"Small": 9, "Medium": 11, "Large": 14}[caption_size]
         colour_hex = {"White": "&H00FFFFFF", "Yellow": "&H0000FFFF", "Cyan": "&H00FFFF00"}[caption_colour]
-        margin = {"Bottom": 100, "Middle": 600, "Top": 1100}[caption_position]
+        margin = {"Bottom": 80, "Middle": 500, "Top": 900}[caption_position]
         try:
             _assemble(clips, audio_path, srt_path, hook.strip(), output_path, work_dir,
                       font_size=font_size, colour_hex=colour_hex, margin_v=margin)

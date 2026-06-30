@@ -1,4 +1,4 @@
-gtts
+edge-tts
 openai-whisper
 requests
 streamlit
