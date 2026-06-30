@@ -18,7 +18,10 @@ st.title("🎬 LocalAppointments Video Generator")
 st.caption("Paste your script, fill in the details, and download a ready-to-post 9:16 video.")
 
 # ── Pexels key: secrets first, fallback to env, fallback to form field ────────
-pexels_key_preset = st.secrets.get("PEXELS_API_KEY", "") or os.environ.get("PEXELS_API_KEY", "")
+try:
+    pexels_key_preset = st.secrets["PEXELS_API_KEY"]
+except Exception:
+    pexels_key_preset = os.environ.get("PEXELS_API_KEY", "")
 
 # ── Form ─────────────────────────────────────────────────────────────────────
 with st.form("video_form"):
@@ -28,9 +31,19 @@ with st.form("video_form"):
         placeholder="Paste the full script here...",
     )
     hook = st.text_input(
-        "Hook Text (shown as bold overlay in first 2 seconds)",
+        "Hook Text (bold overlay, first 2 seconds)",
         placeholder="e.g. Every missed call is a booking lost.",
     )
+
+    st.markdown("**Caption Style**")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        caption_size = st.selectbox("Font size", ["Small", "Medium", "Large"], index=1)
+    with col2:
+        caption_colour = st.selectbox("Text colour", ["White", "Yellow", "Cyan"], index=0)
+    with col3:
+        caption_position = st.selectbox("Position", ["Bottom", "Middle", "Top"], index=0)
+
     keywords = st.text_input(
         "B-roll Keywords (comma-separated)",
         placeholder="e.g. missed call, nail salon, dog grooming, AI chatbot",
@@ -102,8 +115,12 @@ if submitted:
         # ── Step 4: Assemble ──────────────────────────────────────────────────
         progress.progress(70, text="🎞️  Assembling video (this takes ~1 min)...")
         output_path = os.path.join(work_dir, "final_video.mp4")
+        font_size = {"Small": 13, "Medium": 16, "Large": 22}[caption_size]
+        colour_hex = {"White": "&H00FFFFFF", "Yellow": "&H0000FFFF", "Cyan": "&H00FFFF00"}[caption_colour]
+        margin = {"Bottom": 100, "Middle": 600, "Top": 1100}[caption_position]
         try:
-            _assemble(clips, audio_path, srt_path, hook.strip(), output_path, work_dir)
+            _assemble(clips, audio_path, srt_path, hook.strip(), output_path, work_dir,
+                      font_size=font_size, colour_hex=colour_hex, margin_v=margin)
         except Exception as e:
             st.error(f"Video assembly failed: {e}")
             st.stop()
@@ -167,7 +184,7 @@ def _run(cmd: list) -> None:
         raise RuntimeError(res.stderr.decode())
 
 
-def _assemble(clips, audio, srt, hook, output, work_dir):
+def _assemble(clips, audio, srt, hook, output, work_dir, font_size=16, colour_hex="&H00FFFFFF", margin_v=100):
     # Resize clips to 1080x1920
     processed = []
     for i, clip in enumerate(clips):
@@ -203,13 +220,13 @@ def _assemble(clips, audio, srt, hook, output, work_dir):
     _run(["ffmpeg", "-y", "-i", looped, "-t", str(duration), "-c", "copy", trimmed])
 
     # Filters: captions + hook overlay
-    safe_hook = hook.replace("'", "’").replace(":", "\\:")
+    safe_hook = hook.replace("’", "’").replace(":", "\\:")
     abs_srt = os.path.abspath(srt).replace("\\", "/").replace(":", "\\:")
     vf = (
-        f"subtitles='{abs_srt}':force_style='"
-        "FontName=Arial,FontSize=16,Bold=1,"
-        "PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,"
-        "Outline=2,Alignment=2,MarginV=100',"
+        f"subtitles=’{abs_srt}’:force_style=’"
+        f"FontName=Arial,FontSize={font_size},Bold=1,"
+        f"PrimaryColour={colour_hex},OutlineColour=&H00000000,"
+        f"Outline=2,Alignment=2,MarginV={margin_v}’,"
         f"drawtext=text='{safe_hook}':"
         "fontsize=44:fontcolor=white:"
         "x=(w-text_w)/2:y=h/5:"
