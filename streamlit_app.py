@@ -7,6 +7,12 @@ import tempfile
 import requests
 import streamlit as st
 
+
+def _srt(s: float) -> str:
+    h, rem = divmod(s, 3600)
+    m, sec = divmod(rem, 60)
+    return f"{int(h):02d}:{int(m):02d}:{int(sec):02d},{int((s % 1) * 1000):03d}"
+
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="LocalAppointments — Video Generator",
@@ -143,12 +149,6 @@ if submitted:
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _srt(s: float) -> str:
-    h, rem = divmod(s, 3600)
-    m, sec = divmod(rem, 60)
-    return f"{int(h):02d}:{int(m):02d}:{int(sec):02d},{int((s % 1) * 1000):03d}"
-
 
 def _fetch_broll(keywords: list, key: str, work_dir: str) -> list:
     headers = {"Authorization": key}
