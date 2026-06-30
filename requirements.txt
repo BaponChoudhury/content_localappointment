@@ -1,0 +1,3 @@
+gtts
+openai-whisper
+requests
