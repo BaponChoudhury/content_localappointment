@@ -17,6 +17,9 @@ st.set_page_config(
 st.title("🎬 LocalAppointments Video Generator")
 st.caption("Paste your script, fill in the details, and download a ready-to-post 9:16 video.")
 
+# ── Pexels key: secrets first, fallback to env, fallback to form field ────────
+pexels_key_preset = st.secrets.get("PEXELS_API_KEY", "") or os.environ.get("PEXELS_API_KEY", "")
+
 # ── Form ─────────────────────────────────────────────────────────────────────
 with st.form("video_form"):
     script = st.text_area(
@@ -32,11 +35,15 @@ with st.form("video_form"):
         "B-roll Keywords (comma-separated)",
         placeholder="e.g. missed call, nail salon, dog grooming, AI chatbot",
     )
-    pexels_key = st.text_input(
-        "Pexels API Key",
-        type="password",
-        placeholder="Get a free key at pexels.com/api",
-    )
+    if not pexels_key_preset:
+        pexels_key = st.text_input(
+            "Pexels API Key",
+            type="password",
+            placeholder="Get a free key at pexels.com/api",
+        )
+    else:
+        pexels_key = pexels_key_preset
+        st.caption("✅ Pexels API key loaded from settings.")
     submitted = st.form_submit_button("🎬 Generate Video", use_container_width=True)
 
 # ── Pipeline ──────────────────────────────────────────────────────────────────
