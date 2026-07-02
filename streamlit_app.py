@@ -2,8 +2,9 @@ import os
 import json
 import subprocess
 import tempfile
+import threading
+import asyncio
 
-import requests
 import streamlit as st
 
 
@@ -22,6 +23,7 @@ def _run(cmd: list) -> None:
 
 
 def _fetch_broll(keywords: list, key: str, work_dir: str) -> list:
+    import requests
     headers = {"Authorization": key}
     clips = []
     for i, kw in enumerate(keywords[:4]):
@@ -196,8 +198,6 @@ if submitted:
 
         progress.progress(10, text="🎙️  Generating voiceover (Neural British English)...")
         try:
-            import threading
-            import asyncio
             import edge_tts
             audio_path = os.path.join(work_dir, "voice.mp3")
             async def _speak():
