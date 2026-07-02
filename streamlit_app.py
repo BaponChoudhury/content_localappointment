@@ -196,36 +196,55 @@ if submitted:
     with tempfile.TemporaryDirectory() as work_dir:
         progress = st.progress(0, text="Starting...")
 
-        progress.progress(10, text="🎙️  Generating voiceover (Neural British English)...")
+        progress.progress(10, text="🎙️  Generating voiceover and captions...")
         try:
             import edge_tts
             audio_path = os.path.join(work_dir, "voice.mp3")
-            async def _speak():
+            srt_path = os.path.join(work_dir, "captions.srt")
+
+            async def _speak_and_caption():
                 communicate = edge_tts.Communicate(script, "en-GB-SoniaNeural")
-                await communicate.save(audio_path)
+                words = []
+                audio_chunks = []
+                async for chunk in communicate.stream():
+                    if chunk["type"] == "audio":
+                        audio_chunks.append(chunk["data"])
+                    elif chunk["type"] == "WordBoundary":
+                        words.append({
+                            "text": chunk["text"],
+                            "start": chunk["offset"] / 10_000_000,
+                            "end": (chunk["offset"] + chunk["duration"]) / 10_000_000,
+                        })
+                with open(audio_path, "wb") as af:
+                    for c in audio_chunks:
+                        af.write(c)
+                # Group words into caption lines (~5 words each)
+                groups, group = [], []
+                for w in words:
+                    group.append(w)
+                    if len(group) >= 5:
+                        groups.append(group)
+                        group = []
+                if group:
+                    groups.append(group)
+                with open(srt_path, "w", encoding="utf-8") as sf:
+                    for i, g in enumerate(groups, 1):
+                        start = g[0]["start"]
+                        end = g[-1]["end"]
+                        text = " ".join(w["text"] for w in g)
+                        sf.write(f"{i}\n{_srt(start)} --> {_srt(end)}\n{text}\n\n")
+
             def _run_tts():
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                loop.run_until_complete(_speak())
+                loop.run_until_complete(_speak_and_caption())
                 loop.close()
+
             t = threading.Thread(target=_run_tts)
             t.start()
             t.join()
         except Exception as e:
-            st.error(f"Voice generation failed: {e}")
-            st.stop()
-
-        progress.progress(30, text="📝  Transcribing for captions (Whisper)...")
-        try:
-            import whisper
-            model = whisper.load_model("base")
-            result = model.transcribe(audio_path)
-            srt_path = os.path.join(work_dir, "captions.srt")
-            with open(srt_path, "w", encoding="utf-8") as fh:
-                for i, seg in enumerate(result["segments"], 1):
-                    fh.write(f"{i}\n{_srt(seg['start'])} --> {_srt(seg['end'])}\n{seg['text'].strip()}\n\n")
-        except Exception as e:
-            st.error(f"Caption generation failed: {e}")
+            st.error(f"Voice/caption generation failed: {e}")
             st.stop()
 
         progress.progress(50, text="🎬  Fetching B-roll from Pexels...")
