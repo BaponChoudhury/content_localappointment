@@ -13,7 +13,7 @@ import streamlit as st
 def _run(cmd: list) -> None:
     res = subprocess.run(cmd, capture_output=True)
     if res.returncode != 0:
-        raise RuntimeError(res.stderr.decode())
+        raise RuntimeError(res.stderr.decode()[-2000:])
 
 
 def _fetch_broll(keywords: list, key: str, work_dir: str) -> list:
@@ -210,10 +210,18 @@ if submitted:
             st.error("No B-roll clips found. Check your Pexels API key and try different keywords.")
             st.stop()
 
+        # Convert MP3 to AAC to avoid mux issues
+        aac_path = os.path.join(work_dir, "voice.aac")
+        try:
+            _run(["ffmpeg", "-y", "-i", audio_path, "-c:a", "aac", "-b:a", "128k", aac_path])
+        except Exception as e:
+            st.error(f"Audio conversion failed: {e}")
+            st.stop()
+
         progress.progress(70, text="🎞️  Assembling video...")
         output_path = os.path.join(work_dir, "final_video.mp4")
         try:
-            _assemble(clips, audio_path, hook.strip(), output_path, work_dir)
+            _assemble(clips, aac_path, hook.strip(), output_path, work_dir)
         except Exception as e:
             st.error(f"Video assembly failed: {e}")
             st.stop()
