@@ -8,13 +8,7 @@ import asyncio
 import streamlit as st
 
 
-# ── All helpers defined first ─────────────────────────────────────────────────
-
-def _srt(s: float) -> str:
-    h, rem = divmod(s, 3600)
-    m, sec = divmod(rem, 60)
-    return f"{int(h):02d}:{int(m):02d}:{int(sec):02d},{int((s % 1) * 1000):03d}"
-
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _run(cmd: list) -> None:
     res = subprocess.run(cmd, capture_output=True)
@@ -51,7 +45,7 @@ def _fetch_broll(keywords: list, key: str, work_dir: str) -> list:
     return clips
 
 
-def _assemble(clips, audio, srt, hook, output, work_dir, font_size=16, colour_hex="&H00FFFFFF", margin_v=100):
+def _assemble(clips, audio, hook, output, work_dir):
     processed = []
     for i, clip in enumerate(clips):
         out = os.path.join(work_dir, f"proc_{i}.mp4")
@@ -83,7 +77,7 @@ def _assemble(clips, audio, srt, hook, output, work_dir, font_size=16, colour_he
     trimmed = os.path.join(work_dir, "trimmed.mp4")
     _run(["ffmpeg", "-y", "-i", looped, "-t", str(duration), "-c", "copy", trimmed])
 
-    # Wrap hook text at ~30 chars per line to avoid flooding the screen
+    # Wrap hook text at ~30 chars per line
     words = hook.split()
     lines, line = [], []
     for word in words:
@@ -93,14 +87,9 @@ def _assemble(clips, audio, srt, hook, output, work_dir, font_size=16, colour_he
             line = [word]
     if line:
         lines.append(" ".join(line))
-    wrapped_hook = "\n".join(lines).replace("'", "'").replace(":", "\\:")
+    wrapped_hook = "\n".join(lines).replace("'", "’").replace(":", "\\:")
 
-    abs_srt = os.path.abspath(srt).replace("\\", "/").replace(":", "\\:")
     vf = (
-        f"subtitles='{abs_srt}':original_size=1080x1920:force_style='"
-        f"FontName=Arial,FontSize={font_size},Bold=1,"
-        f"PrimaryColour={colour_hex},OutlineColour=&H00000000,"
-        f"Outline=2,Alignment=2,MarginV={margin_v}',"
         f"drawtext=text='{wrapped_hook}':"
         "fontsize=28:fontcolor=white:"
         "x=(w-text_w)/2:y=h/6:"
@@ -130,7 +119,6 @@ st.set_page_config(
 st.title("🎬 LocalAppointments Video Generator")
 st.caption("Paste your script, fill in the details, and download a ready-to-post 9:16 video.")
 
-# ── Pexels key: secrets first, fallback to env ────────────────────────────────
 try:
     pexels_key_preset = st.secrets["PEXELS_API_KEY"]
 except Exception:
@@ -147,21 +135,10 @@ with st.form("video_form"):
         "Hook Text (bold overlay, first 2 seconds)",
         placeholder="e.g. Every missed call is a booking lost.",
     )
-
-    st.markdown("**Caption Style**")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        caption_size = st.selectbox("Font size", ["Small", "Medium", "Large"], index=1)
-    with col2:
-        caption_colour = st.selectbox("Text colour", ["White", "Yellow", "Cyan"], index=0)
-    with col3:
-        caption_position = st.selectbox("Position", ["Bottom", "Middle", "Top"], index=0)
-
     keywords = st.text_input(
         "B-roll Keywords (comma-separated)",
         placeholder="e.g. missed call, nail salon, dog grooming, AI chatbot",
     )
-
     if not pexels_key_preset:
         pexels_key = st.text_input(
             "Pexels API Key",
@@ -196,55 +173,26 @@ if submitted:
     with tempfile.TemporaryDirectory() as work_dir:
         progress = st.progress(0, text="Starting...")
 
-        progress.progress(10, text="🎙️  Generating voiceover and captions...")
+        progress.progress(20, text="🎙️  Generating voiceover...")
         try:
             import edge_tts
             audio_path = os.path.join(work_dir, "voice.mp3")
-            srt_path = os.path.join(work_dir, "captions.srt")
 
-            async def _speak_and_caption():
+            async def _speak():
                 communicate = edge_tts.Communicate(script, "en-GB-SoniaNeural")
-                words = []
-                audio_chunks = []
-                async for chunk in communicate.stream():
-                    if chunk["type"] == "audio":
-                        audio_chunks.append(chunk["data"])
-                    elif chunk["type"] == "WordBoundary":
-                        words.append({
-                            "text": chunk["text"],
-                            "start": chunk["offset"] / 10_000_000,
-                            "end": (chunk["offset"] + chunk["duration"]) / 10_000_000,
-                        })
-                with open(audio_path, "wb") as af:
-                    for c in audio_chunks:
-                        af.write(c)
-                # Group words into caption lines (~5 words each)
-                groups, group = [], []
-                for w in words:
-                    group.append(w)
-                    if len(group) >= 5:
-                        groups.append(group)
-                        group = []
-                if group:
-                    groups.append(group)
-                with open(srt_path, "w", encoding="utf-8") as sf:
-                    for i, g in enumerate(groups, 1):
-                        start = g[0]["start"]
-                        end = g[-1]["end"]
-                        text = " ".join(w["text"] for w in g)
-                        sf.write(f"{i}\n{_srt(start)} --> {_srt(end)}\n{text}\n\n")
+                await communicate.save(audio_path)
 
             def _run_tts():
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
-                loop.run_until_complete(_speak_and_caption())
+                loop.run_until_complete(_speak())
                 loop.close()
 
             t = threading.Thread(target=_run_tts)
             t.start()
             t.join()
         except Exception as e:
-            st.error(f"Voice/caption generation failed: {e}")
+            st.error(f"Voice generation failed: {e}")
             st.stop()
 
         progress.progress(50, text="🎬  Fetching B-roll from Pexels...")
@@ -253,14 +201,10 @@ if submitted:
             st.error("No B-roll clips found. Check your Pexels API key and try different keywords.")
             st.stop()
 
-        progress.progress(70, text="🎞️  Assembling video (this takes ~1 min)...")
+        progress.progress(70, text="🎞️  Assembling video...")
         output_path = os.path.join(work_dir, "final_video.mp4")
-        font_size = {"Small": 9, "Medium": 11, "Large": 14}[caption_size]
-        colour_hex = {"White": "&H00FFFFFF", "Yellow": "&H0000FFFF", "Cyan": "&H00FFFF00"}[caption_colour]
-        margin = {"Bottom": 40, "Middle": 860, "Top": 1720}[caption_position]
         try:
-            _assemble(clips, audio_path, srt_path, hook.strip(), output_path, work_dir,
-                      font_size=font_size, colour_hex=colour_hex, margin_v=margin)
+            _assemble(clips, audio_path, hook.strip(), output_path, work_dir)
         except Exception as e:
             st.error(f"Video assembly failed: {e}")
             st.stop()
