@@ -100,7 +100,7 @@ def _assemble(clips, audio, hook, output, work_dir):
     _run([
         "ffmpeg", "-y",
         "-i", trimmed, "-i", audio,
-        "-map", "0:v", "-map", "1:a",
+        "-map", "0:v:0", "-map", "1:a:0",
         "-vf", vf,
         "-c:v", "libx264", "-crf", "28", "-preset", "medium",
         "-c:a", "aac", "-b:a", "128k",
@@ -177,20 +177,29 @@ if submitted:
         try:
             import edge_tts
             audio_path = os.path.join(work_dir, "voice.mp3")
+            tts_error = [None]
 
             async def _speak():
                 communicate = edge_tts.Communicate(script, "en-GB-SoniaNeural")
                 await communicate.save(audio_path)
 
             def _run_tts():
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(_speak())
-                loop.close()
+                try:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(_speak())
+                    loop.close()
+                except Exception as ex:
+                    tts_error[0] = ex
 
             t = threading.Thread(target=_run_tts)
             t.start()
             t.join()
+
+            if tts_error[0]:
+                raise tts_error[0]
+            if not os.path.exists(audio_path) or os.path.getsize(audio_path) == 0:
+                raise RuntimeError("Audio file was not created — edge-tts may have failed silently.")
         except Exception as e:
             st.error(f"Voice generation failed: {e}")
             st.stop()
