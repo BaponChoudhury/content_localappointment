@@ -196,13 +196,21 @@ if submitted:
 
         progress.progress(10, text="🎙️  Generating voiceover (Neural British English)...")
         try:
-            import edge_tts
+            import threading
             import asyncio
+            import edge_tts
             audio_path = os.path.join(work_dir, "voice.mp3")
             async def _speak():
                 communicate = edge_tts.Communicate(script, "en-GB-SoniaNeural")
                 await communicate.save(audio_path)
-            asyncio.run(_speak())
+            def _run_tts():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(_speak())
+                loop.close()
+            t = threading.Thread(target=_run_tts)
+            t.start()
+            t.join()
         except Exception as e:
             st.error(f"Voice generation failed: {e}")
             st.stop()
